@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nexus Translator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="grid-bg" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <div class="logo">
+      <span class="logo-mark">◇</span>
+      <span class="logo-text">NEXUS<em>Translator</em></span>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-view="translate" role="tab">Traduire</button>
+      <button class="tab" data-view="history" role="tab">Historique</button>
+      <button class="tab" data-view="favorites" role="tab">Favoris</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- VUE TRADUCTION -->
+    <section id="view-translate" class="view active">
+      <div class="hero-line">
+        <span class="pulse"></span>
+        <span id="status-text">Prêt — traduction gratuite et illimitée</span>
+      </div>
+
+      <div class="lang-bar">
+        <div class="lang-select">
+          <label for="src-lang">De</label>
+          <select id="src-lang"></select>
+        </div>
+        <button id="swap" class="swap-btn" title="Inverser les langues" aria-label="Inverser les langues">⇄</button>
+        <div class="lang-select">
+          <label for="tgt-lang">Vers</label>
+          <select id="tgt-lang"></select>
+        </div>
+      </div>
+
+      <div class="register-bar" id="register-bar">
+        <span class="register-label">Registre</span>
+        <div class="register-toggle" role="group" aria-label="Registre de langue">
+          <button class="reg-btn active" data-reg="neutral">Neutre</button>
+          <button class="reg-btn" data-reg="formal">Formel (vous)</button>
+          <button class="reg-btn" data-reg="informal">Familier (tu)</button>
+        </div>
+      </div>
+
+      <div class="panels">
+        <div class="panel">
+          <div class="panel-head">
+            <span class="panel-lang" id="src-name">Détection auto</span>
+            <div class="panel-actions">
+              <button class="icon-btn" id="paste" title="Coller">Coller</button>
+              <button class="icon-btn" id="clear" title="Effacer">Effacer</button>
+              <button class="icon-btn" id="speak-src" title="Écouter">🔊</button>
+            </div>
+          </div>
+          <textarea id="source" placeholder="Tapez ou collez votre texte…" autofocus></textarea>
+          <div class="panel-foot">
+            <span id="char-count">0 caractères</span>
+          </div>
+        </div>
+
+        <div class="panel out">
+          <div class="panel-head">
+            <span class="panel-lang" id="tgt-name">Français</span>
+            <div class="panel-actions">
+              <button class="icon-btn" id="copy" title="Copier">Copier</button>
+              <button class="icon-btn" id="fav" title="Ajouter aux favoris">☆</button>
+              <button class="icon-btn" id="speak-tgt" title="Écouter">🔊</button>
+            </div>
+          </div>
+          <div id="result" class="result" aria-live="polite"></div>
+          <div class="panel-foot">
+            <span id="result-meta"></span>
+          </div>
+        </div>
+      </div>
+
+      <p class="disclaimer">
+        Traduction via les API publiques gratuites MyMemory et LibreTranslate.
+        La qualité varie selon les langues ; pour un usage professionnel, vérifiez toujours le résultat.
+      </p>
+    </section>
+
+    <!-- VUE HISTORIQUE -->
+    <section id="view-history" class="view">
+      <div class="list-head">
+        <h2>Historique</h2>
+        <button class="ghost-btn" id="clear-history">Tout effacer</button>
+      </div>
+      <div id="history-list" class="list"></div>
+    </section>
+
+    <!-- VUE FAVORIS -->
+    <section id="view-favorites" class="view">
+      <div class="list-head">
+        <h2>Favoris</h2>
+        <button class="ghost-btn" id="clear-favorites">Tout effacer</button>
+      </div>
+      <div id="favorites-list" class="list"></div>
+    </section>
+  </main>
+
+  <script src="languages.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
