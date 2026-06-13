@@ -1,0 +1,18 @@
+{
+  "name": "Nexus Translator",
+  "short_name": "Nexus",
+  "description": "Traducteur gratuit, illimité, avec variantes, phonétique et mode hors-ligne.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#070b12",
+  "theme_color": "#070b12",
+  "lang": "fr",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
