@@ -8,6 +8,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#070b12">
 </head>
 <body>
   <div class="grid-bg" aria-hidden="true"></div>
@@ -30,6 +32,7 @@
       <div class="hero-line">
         <span class="pulse"></span>
         <span id="status-text">Prêt — traduction gratuite et illimitée</span>
+        <span id="net-badge" class="net-badge online">En ligne</span>
       </div>
 
       <div class="lang-bar">
@@ -79,6 +82,11 @@
             </div>
           </div>
           <div id="result" class="result" aria-live="polite"></div>
+          <div id="phonetic" class="phonetic" hidden></div>
+          <div id="alternatives" class="alternatives" hidden>
+            <span class="alt-label">Variantes</span>
+            <div id="alt-chips" class="alt-chips"></div>
+          </div>
           <div class="panel-foot">
             <span id="result-meta"></span>
           </div>
@@ -112,5 +120,11 @@
 
   <script src="languages.js"></script>
   <script src="app.js"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () =>
+        navigator.serviceWorker.register("sw.js").catch(() => {}));
+    }
+  </script>
 </body>
 </html>
