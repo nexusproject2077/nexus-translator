@@ -25,6 +25,9 @@
 
   const STORE = { hist: "nexus_tr_history", fav: "nexus_tr_favorites", cache: "nexus_tr_cache" };
 
+  // Message de statut « prêt » (le nombre de langues est dérivé du référentiel).
+  const READY_MSG = `Prêt — traduction gratuite et illimitée · ${NEXUS_LANGUAGES.length - 1} langues`;
+
   /* ---- cache hors-ligne : mémorise les traductions pour réutilisation sans réseau ---- */
   function cacheKey(text, from, to) { return `${from}::${to}::${text}`; }
   function loadCache() { try { return JSON.parse(localStorage.getItem(STORE.cache)) || {}; } catch { return {}; } }
@@ -77,25 +80,99 @@
     return text;
   }
 
-  /* Post-traitement : ajuste tu/vous sur les langues à pronom d'adresse double.
-     Limité et honnête — corrige les cas fréquents, pas une garantie complète. */
+  /* Règles de registre par langue.
+     Chaque règle : [forme_source, forme_cible, sensibleCasse?].
+     - Par défaut : insensible à la casse, la casse du mot trouvé est préservée.
+     - sensibleCasse = true : nécessaire quand la forme minuscule a un autre sens
+       (ex. all. « Sie » = vous vs « sie » = elle/ils ; it. « Lei » = vous vs « lei » = elle). */
+  const REGISTER_RULES = {
+    /* ----- Langues romanes ----- */
+    fr: { formal:   [["tu","vous"],["toi","vous"],["ton","votre"],["ta","votre"],["tes","vos"],["te","vous"]],
+          informal: [["vous","tu"],["votre","ton"],["vos","tes"]] },
+    es: { formal:   [["tú","usted"],["ti","usted"],["te","le"],["tuyo","suyo"],["tuya","suya"]],
+          informal: [["usted","tú"]] },
+    it: { formal:   [["tu","Lei"],["ti","La"],["tuo","Suo"],["tua","Sua"],["te","Lei"]],
+          informal: [["Lei","tu",true]] },
+    pt: { formal:   [["tu","você"],["te","lhe"],["teu","seu"],["tua","sua"],["ti","você"]],
+          informal: [["você","tu"]] },
+    ro: { formal:   [["tu","dumneavoastră"],["tău","dumneavoastră"],["ție","dumneavoastră"],["te","vă"]],
+          informal: [["dumneavoastră","tu"]] },
+    ca: { formal:   [["tu","vostè"],["teu","seu"],["teva","seva"]],
+          informal: [["vostè","tu"]] },
+    gl: { formal:   [["ti","vostede"],["tu","vostede"],["teu","seu"]],
+          informal: [["vostede","ti"]] },
+    /* ----- Langues germaniques ----- */
+    de: { formal:   [["du","Sie"],["dich","Sie"],["dir","Ihnen"],["dein","Ihr"],["deine","Ihre"],["deinen","Ihren"]],
+          informal: [["Sie","du",true],["Ihnen","dir",true],["Ihre","deine",true],["Ihren","deinen",true],["Ihr","dein",true]] },
+    nl: { formal:   [["jij","u"],["je","u"],["jou","u"],["jouw","uw"]],
+          informal: [["u","jij"],["uw","jouw"]] },
+    /* ----- Grec ----- */
+    el: { formal:   [["εσύ","εσείς"],["σου","σας"],["σε","σας"],["σένα","εσάς"]],
+          informal: [["εσείς","εσύ"],["σας","σου"]] },
+    /* ----- Turc ----- */
+    tr: { formal:   [["sen","siz"],["senin","sizin"],["sana","size"],["seni","sizi"],["sende","sizde"]],
+          informal: [["siz","sen"],["sizin","senin"],["size","sana"],["sizi","seni"]] },
+    /* ----- Langues slaves (cyrillique) ----- */
+    ru: { formal:   [["ты","вы"],["тебя","вас"],["тебе","вам"],["тобой","вами"],["твой","ваш"],["твоя","ваша"],["твоё","ваше"],["твои","ваши"]],
+          informal: [["вы","ты"],["вас","тебя"],["вам","тебе"],["ваш","твой"],["ваша","твоя"]] },
+    uk: { formal:   [["ти","ви"],["тебе","вас"],["тобі","вам"],["твій","ваш"]],
+          informal: [["ви","ти"],["вас","тебе"]] },
+    bg: { formal:   [["ти","вие"],["теб","вас"],["твой","ваш"],["твоя","ваша"]],
+          informal: [["вие","ти"]] },
+    mk: { formal:   [["ти","вие"],["тебе","вас"],["твој","ваш"]],
+          informal: [["вие","ти"]] },
+    be: { formal:   [["ты","вы"],["цябе","вас"],["твой","ваш"]],
+          informal: [["вы","ты"]] },
+    sr: { formal:   [["ти","ви"],["тебе","вас"],["ti","Vi"],["tebe","Vas"]],
+          informal: [["ви","ти"],["Vi","ti",true],["Vas","tebe",true]] },
+    /* ----- Langues slaves (latin) ----- */
+    pl: { formal:   [["ty","Pan"],["ciebie","Pana"],["tobie","Panu"],["twój","Pański"]],
+          informal: [["Pan","ty",true],["Pani","ty",true],["Pana","ciebie",true]] },
+    cs: { formal:   [["ty","vy"],["tebe","vás"],["tobě","vám"],["tvůj","váš"],["tě","vás"]],
+          informal: [["vy","ty"],["vás","tebe"],["vám","tobě"]] },
+    sk: { formal:   [["ty","vy"],["teba","vás"],["tebe","vás"],["tvoj","váš"]],
+          informal: [["vy","ty"],["vás","teba"]] },
+    sl: { formal:   [["ti","vi"],["tebe","vas"],["tvoj","vaš"]],
+          informal: [["vi","ti"],["vas","tebe"]] },
+    hr: { formal:   [["ti","Vi"],["tebe","Vas"],["tvoj","Vaš"]],
+          informal: [["Vi","ti",true],["Vas","tebe",true]] },
+    bs: { formal:   [["ti","Vi"],["tebe","Vas"]],
+          informal: [["Vi","ti",true],["Vas","tebe",true]] }
+  };
+
+  function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+
+  /* Reproduit la casse de `sample` sur `repl` (Tu -> Vous, TU -> VOUS). */
+  function matchCase(sample, repl) {
+    if (sample === sample.toUpperCase() && sample !== sample.toLowerCase()) return repl.toUpperCase();
+    if (sample[0] === sample[0].toUpperCase() && sample[0] !== sample[0].toLowerCase())
+      return repl[0].toUpperCase() + repl.slice(1);
+    return repl;
+  }
+
+  /* Remplace un mot entier en s'appuyant sur des frontières Unicode
+     (indispensable pour le cyrillique/grec où \b ASCII échoue). */
+  function replaceWord(text, from, to, caseSensitive) {
+    const flags = caseSensitive ? "gu" : "giu";
+    let re;
+    try {
+      re = new RegExp(`(?<![\\p{L}\\p{M}'-])(${escapeRe(from)})(?![\\p{L}\\p{M}'-])`, flags);
+    } catch {
+      // Repli si lookbehind/\p non supporté
+      re = new RegExp(`\\b(${escapeRe(from)})\\b`, flags);
+    }
+    return text.replace(re, (m) => (caseSensitive ? to : matchCase(m, to)));
+  }
+
+  /* Post-traitement : ajuste tu/vous (ou équivalent) sur les langues à
+     double pronom d'adresse. Approximatif et honnête — corrige les cas
+     fréquents, ce n'est pas une garantie grammaticale complète. */
   function postRegister(out, tgtLang) {
     if (register === "neutral") return out;
-    const map = {
-      fr: { formal: [[/\btu\b/g, "vous"], [/\bton\b/g, "votre"], [/\bta\b/g, "votre"], [/\btes\b/g, "vos"], [/\bte\b/g, "vous"], [/\btoi\b/g, "vous"]],
-            informal: [[/\bvous\b/g, "tu"], [/\bvotre\b/g, "ton"], [/\bvos\b/g, "tes"]] },
-      es: { formal: [[/\btú\b/g, "usted"], [/\btu\b/g, "su"], [/\bte\b/g, "le"]],
-            informal: [[/\busted\b/g, "tú"]] },
-      de: { formal: [[/\bdu\b/g, "Sie"], [/\bdein\b/g, "Ihr"], [/\bdich\b/g, "Sie"]],
-            informal: [[/\bSie\b/g, "du"], [/\bIhr\b/g, "dein"]] },
-      it: { formal: [[/\btu\b/g, "Lei"]], informal: [[/\bLei\b/g, "tu"]] },
-      pt: { formal: [[/\btu\b/g, "você"]], informal: [[/\bvocê\b/g, "tu"]] },
-      tr: { formal: [[/\bsen\b/g, "siz"], [/\bsenin\b/g, "sizin"]], informal: [[/\bsiz\b/g, "sen"]] }
-    };
-    const rules = map[tgtLang] && map[tgtLang][register];
+    const rules = REGISTER_RULES[tgtLang] && REGISTER_RULES[tgtLang][register];
     if (!rules) return out;
     let r = out;
-    rules.forEach(([re, rep]) => { r = r.replace(re, rep); });
+    rules.forEach(([from, to, cs]) => { r = replaceWord(r, from, to, cs); });
     return r;
   }
 
@@ -127,14 +204,21 @@
 
   /* ---- API 2 : LibreTranslate (repli) ---- */
   async function viaLibre(text, from, to) {
-    const endpoints = ["https://libretranslate.com/translate", "https://translate.terraprint.co/translate"];
+    const endpoints = [
+      "https://translate.fedilab.app/translate",
+      "https://libretranslate.com/translate",
+      "https://lt.vern.cc/translate",
+      "https://trans.zillyhuhn.com/translate"
+    ];
+    // LibreTranslate n'utilise pas les variantes régionales (zh-CN -> zh).
+    const libreCode = (c) => (c === "auto" ? "auto" : c.split("-")[0]);
     let lastErr;
     for (const ep of endpoints) {
       try {
         const res = await fetch(ep, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ q: text, source: from === "auto" ? "auto" : from, target: to, format: "text" })
+          body: JSON.stringify({ q: text, source: libreCode(from), target: libreCode(to), format: "text" })
         });
         if (!res.ok) throw new Error("HTTP " + res.status);
         const data = await res.json();
@@ -205,7 +289,7 @@
     srcName.textContent = from === "auto" ? `Détecté : ${detName}` : nameOf(from);
     resultMeta.textContent = `${payload.engine}${fromCache ? " (cache)" : ""} • ${outText.length} caractères`;
     statusText.textContent = navigator.onLine
-      ? "Prêt — traduction gratuite et illimitée"
+      ? READY_MSG
       : "Mode hors ligne — résultats en cache";
 
     showAlternatives(payload.alternatives, to);
@@ -303,11 +387,34 @@
   }
 
   /* ---- synthèse vocale ---- */
+  // Précharge la liste des voix (asynchrone sur certains navigateurs).
+  let ttsVoices = [];
+  function refreshVoices() {
+    if ("speechSynthesis" in window) ttsVoices = speechSynthesis.getVoices() || [];
+  }
+  if ("speechSynthesis" in window) {
+    refreshVoices();
+    speechSynthesis.addEventListener?.("voiceschanged", refreshVoices);
+  }
+
   function speak(text, langCode) {
-    if (!text || !("speechSynthesis" in window)) { toast("Synthèse vocale indisponible"); return; }
+    if (!("speechSynthesis" in window)) { toast("Synthèse vocale indisponible"); return; }
+    text = (text || "").trim();
+    if (!text) return;
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = NEXUS_TTS[langCode] || "en-US";
+    const lang = NEXUS_TTS[langCode] || (langCode && langCode !== "auto" ? langCode : "en-US");
+    u.lang = lang;
+    // Cherche la meilleure voix disponible (exacte puis par langue de base).
+    if (!ttsVoices.length) refreshVoices();
+    const low = lang.toLowerCase(), base = low.split("-")[0];
+    const voice =
+      ttsVoices.find((v) => v.lang.toLowerCase() === low) ||
+      ttsVoices.find((v) => v.lang.toLowerCase().startsWith(base + "-")) ||
+      ttsVoices.find((v) => v.lang.toLowerCase() === base);
+    if (voice) u.voice = voice;
+    else if (!ttsVoices.some((v) => v.lang.toLowerCase().startsWith(base)))
+      toast(`Voix « ${nameOf(langCode)} » non installée sur cet appareil`);
     speechSynthesis.speak(u);
   }
 
@@ -349,15 +456,21 @@
     }));
 
     $("swap").addEventListener("click", () => {
-      if (srcSel.value === "auto") {
-        // on bascule la détection vers la langue cible actuelle
-        srcSel.value = tgtSel.value;
+      // Détermine la langue source effective (résout "auto" via la détection).
+      let effSrc = srcSel.value;
+      if (effSrc === "auto") {
+        const det = lastTranslation && lastTranslation.srcLang;
+        effSrc = det && NEXUS_LANGUAGES.some((l) => l.code === det) ? det : tgtSel.value;
       }
-      const a = srcSel.value;
-      srcSel.value = tgtSel.value;
-      tgtSel.value = a === "auto" ? tgtSel.value : a;
-      const tmp = srcTa.value;
-      srcTa.value = resultEl.textContent;
+      const newSrc = tgtSel.value;
+      const newTgt = effSrc;
+      srcSel.value = newSrc;
+      tgtSel.value = newTgt;
+      // Le résultat précédent devient le texte source (si disponible).
+      const prev = resultEl.textContent;
+      if (prev && !resultEl.classList.contains("loading") && !resultEl.querySelector(".err")) {
+        srcTa.value = prev;
+      }
       updateMeta(); refreshRegister(); translate();
     });
 
@@ -427,16 +540,32 @@
     "ا":"a","ب":"b","ت":"t","ث":"th","ج":"j","ح":"h","خ":"kh","د":"d","ذ":"dh","ر":"r","ز":"z",
     "س":"s","ش":"ch","ص":"s","ض":"d","ط":"t","ظ":"z","ع":"3","غ":"gh","ف":"f","ق":"q","ك":"k",
     "ل":"l","م":"m","ن":"n","ه":"h","و":"w","ي":"y","ء":"'",
-    // Hiragana (japonais, principal)
+    // Hébreu (approximation latine)
+    "א":"a","ב":"v","ג":"g","ד":"d","ה":"h","ו":"v","ז":"z","ח":"h","ט":"t","י":"y",
+    "כ":"k","ך":"kh","ל":"l","מ":"m","ם":"m","נ":"n","ן":"n","ס":"s","ע":"'","פ":"p",
+    "ף":"f","צ":"ts","ץ":"ts","ק":"k","ר":"r","ש":"sh","ת":"t",
+    // Hiragana (japonais)
     "あ":"a","い":"i","う":"u","え":"e","お":"o","か":"ka","き":"ki","く":"ku","け":"ke","こ":"ko",
     "さ":"sa","し":"shi","す":"su","せ":"se","そ":"so","た":"ta","ち":"chi","つ":"tsu","て":"te","と":"to",
     "な":"na","に":"ni","ぬ":"nu","ね":"ne","の":"no","は":"ha","ひ":"hi","ふ":"fu","へ":"he","ほ":"ho",
     "ま":"ma","み":"mi","む":"mu","め":"me","も":"mo","や":"ya","ゆ":"yu","よ":"yo",
-    "ら":"ra","り":"ri","る":"ru","れ":"re","ろ":"ro","わ":"wa","を":"wo","ん":"n"
+    "ら":"ra","り":"ri","る":"ru","れ":"re","ろ":"ro","わ":"wa","を":"wo","ん":"n",
+    "が":"ga","ぎ":"gi","ぐ":"gu","げ":"ge","ご":"go","ざ":"za","じ":"ji","ず":"zu","ぜ":"ze","ぞ":"zo",
+    "だ":"da","ぢ":"ji","づ":"zu","で":"de","ど":"do","ば":"ba","び":"bi","ぶ":"bu","べ":"be","ぼ":"bo",
+    "ぱ":"pa","ぴ":"pi","ぷ":"pu","ぺ":"pe","ぽ":"po",
+    // Katakana (japonais)
+    "ア":"a","イ":"i","ウ":"u","エ":"e","オ":"o","カ":"ka","キ":"ki","ク":"ku","ケ":"ke","コ":"ko",
+    "サ":"sa","シ":"shi","ス":"su","セ":"se","ソ":"so","タ":"ta","チ":"chi","ツ":"tsu","テ":"te","ト":"to",
+    "ナ":"na","ニ":"ni","ヌ":"nu","ネ":"ne","ノ":"no","ハ":"ha","ヒ":"hi","フ":"fu","ヘ":"he","ホ":"ho",
+    "マ":"ma","ミ":"mi","ム":"mu","メ":"me","モ":"mo","ヤ":"ya","ユ":"yu","ヨ":"yo",
+    "ラ":"ra","リ":"ri","ル":"ru","レ":"re","ロ":"ro","ワ":"wa","ヲ":"wo","ン":"n","ー":"",
+    "ガ":"ga","ギ":"gi","グ":"gu","ゲ":"ge","ゴ":"go","ザ":"za","ジ":"ji","ズ":"zu","ゼ":"ze","ゾ":"zo",
+    "ダ":"da","デ":"de","ド":"do","バ":"ba","ビ":"bi","ブ":"bu","ベ":"be","ボ":"bo",
+    "パ":"pa","ピ":"pi","プ":"pu","ペ":"pe","ポ":"po"
   };
   function transliterate(text, lang) {
-    // n'agit que sur les langues à script non latin
-    if (!["ru","uk","el","ar","ja","fa","bg"].includes(lang)) return null;
+    // n'agit que sur les langues à script non latin que l'on sait translittérer
+    if (!["ru","uk","be","bg","mk","sr","el","ar","fa","ja","he"].includes(lang)) return null;
     let out = "", changed = false;
     for (const ch of text.toLowerCase()) {
       if (TRANSLIT[ch] !== undefined) { out += TRANSLIT[ch]; changed = true; }
@@ -451,7 +580,7 @@
     netBadge.textContent = on ? "En ligne" : "Hors ligne";
     netBadge.className = "net-badge " + (on ? "online" : "offline");
     if (!on) statusText.textContent = "Mode hors ligne — résultats en cache";
-    else statusText.textContent = "Prêt — traduction gratuite et illimitée";
+    else statusText.textContent = READY_MSG;
   }
   window.addEventListener("online", updateNet);
   window.addEventListener("offline", updateNet);
