@@ -1,6 +1,6 @@
 /* Service worker Nexus Translator — met en cache l'app pour usage hors ligne.
    Les traductions, elles, sont mises en cache côté app via localStorage. */
-const CACHE = "nexus-translator-v1";
+const CACHE = "nexus-translator-v2";
 const ASSETS = [
   "./index.html",
   "./style.css",
