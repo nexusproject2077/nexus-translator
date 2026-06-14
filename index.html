@@ -16,7 +16,9 @@
 
   <header class="topbar">
     <div class="logo">
-      <span class="logo-mark">◇</span>
+      <span class="logo-mark">
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l10 10-10 10L2 12z"/><path d="M12 7.5l4.5 4.5L12 16.5 7.5 12z"/></svg>
+      </span>
       <span class="logo-text">NEXUS<em>Translator</em></span>
     </div>
     <nav class="tabs" role="tablist">
@@ -40,7 +42,9 @@
           <label for="src-lang">De</label>
           <select id="src-lang"></select>
         </div>
-        <button id="swap" class="swap-btn" title="Inverser les langues" aria-label="Inverser les langues">⇄</button>
+        <button id="swap" class="swap-btn" title="Inverser les langues" aria-label="Inverser les langues">
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+        </button>
         <div class="lang-select">
           <label for="tgt-lang">Vers</label>
           <select id="tgt-lang"></select>
@@ -63,7 +67,9 @@
             <div class="panel-actions">
               <button class="icon-btn" id="paste" title="Coller">Coller</button>
               <button class="icon-btn" id="clear" title="Effacer">Effacer</button>
-              <button class="icon-btn" id="speak-src" title="Écouter">🔊</button>
+              <button class="icon-btn icon-only" id="speak-src" title="Écouter" aria-label="Écouter le texte source">
+                <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M16 9a4 4 0 0 1 0 6"/><path d="M19 6.5a8 8 0 0 1 0 11"/></svg>
+              </button>
             </div>
           </div>
           <textarea id="source" placeholder="Tapez ou collez votre texte…" autofocus></textarea>
@@ -77,8 +83,12 @@
             <span class="panel-lang" id="tgt-name">Français</span>
             <div class="panel-actions">
               <button class="icon-btn" id="copy" title="Copier">Copier</button>
-              <button class="icon-btn" id="fav" title="Ajouter aux favoris">☆</button>
-              <button class="icon-btn" id="speak-tgt" title="Écouter">🔊</button>
+              <button class="icon-btn icon-only" id="fav" title="Ajouter aux favoris" aria-label="Ajouter aux favoris">
+                <svg class="ic ic-star" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.1 6.5L12 18.3 6.2 20.5l1.1-6.5L2.5 9.4l6.6-.9z"/></svg>
+              </button>
+              <button class="icon-btn icon-only" id="speak-tgt" title="Écouter" aria-label="Écouter la traduction">
+                <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M16 9a4 4 0 0 1 0 6"/><path d="M19 6.5a8 8 0 0 1 0 11"/></svg>
+              </button>
             </div>
           </div>
           <div id="result" class="result" aria-live="polite"></div>

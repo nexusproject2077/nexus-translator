@@ -56,6 +56,74 @@
     return l ? l.name : code;
   }
 
+  /* ---- détection automatique de langue (côté client) ----
+     Combine reconnaissance d'écriture (fiable) et heuristique de mots-outils
+     pour l'alphabet latin. Fonctionne hors-ligne et garantit une source
+     concrète aux API (qui ne détectent pas depuis une source vide). */
+  const LATIN_STOPWORDS = {
+    en: ["the","and","is","are","you","to","of","in","that","it","for","this","with","not","have","what","hello","hi","thanks","yes","no"],
+    fr: ["le","la","les","et","est","vous","je","un","une","des","que","pour","dans","ne","pas","ce","sur","avec","bonjour","merci","oui","salut"],
+    es: ["el","la","los","las","es","que","de","en","un","una","por","para","con","no","se","su","como","hola","gracias","sí","pero"],
+    de: ["der","die","das","und","ist","ich","nicht","ein","eine","mit","sie","den","von","auf","für","wie","geht","ihnen","guten","tag","auch","aber","oder","wir","sind","was","sehr","haben","hallo","danke","ja","nein"],
+    it: ["il","la","le","che","di","un","una","per","con","non","sono","del","della","gli","questo","come","ciao","grazie","sono"],
+    pt: ["os","as","que","de","um","uma","para","com","não","se","da","do","mais","como","olá","obrigado","sim","você"],
+    nl: ["de","het","een","en","is","ik","niet","van","dat","te","op","met","voor","zijn","hallo","dank","ja","nee"],
+    pl: ["nie","to","jest","się","że","na","do","co","jak","tak","jego","czy","dziękuję","cześć"],
+    ro: ["și","este","nu","de","la","un","în","că","cu","pentru","mai","sunt","mulțumesc","bună"],
+    tr: ["ve","bir","bu","için","ile","değil","çok","ben","sen","ama","daha","merhaba","teşekkür","evet","hayır"],
+    sv: ["och","är","att","det","en","som","inte","jag","för","med","på","hej","tack","ja"],
+    id: ["dan","yang","di","itu","ini","dengan","untuk","tidak","saya","adalah","terima","halo"],
+    vi: ["và","là","của","có","không","được","người","những","cho","một","xin","cảm","chào"]
+  };
+  const LATIN_DIACRITICS = {
+    es: /[ñ¿¡]/, fr: /[àâçéèêëîïôûùœ]/, pt: /[ãõáâàçê]/, de: /[äöüß]/,
+    it: /[àèéìòù]/, ro: /[ăâîșțş]/, pl: /[ąćęłńóśźż]/, tr: /[ışğçöü]/,
+    sv: /[åäö]/, vi: /[ăâđêôơưạảấầ]/
+  };
+
+  function detectLanguage(text) {
+    const t = (text || "").trim();
+    if (!t) return null;
+    const has = (re) => re.test(t);
+
+    // 1) Reconnaissance d'écriture (priorité — très fiable)
+    if (has(/[぀-ヿ]/)) return "ja";                        // kana japonais
+    if (has(/[가-힣ᄀ-ᇿ]/)) return "ko";          // hangul
+    if (has(/[฀-๿]/)) return "th";                       // thaï
+    if (has(/[֐-׿]/)) return "he";                       // hébreu
+    if (has(/[Ͱ-Ͽἀ-῿]/)) return "el";          // grec
+    if (has(/[ऀ-ॿ]/)) return "hi";                       // devanagari
+    if (has(/[ঀ-৿]/)) return "bn";                       // bengali
+    if (has(/[஀-௿]/)) return "ta";                       // tamoul
+    if (has(/[ఀ-౿]/)) return "te";                       // télougou
+    if (has(/[԰-֏]/)) return "hy";                       // arménien
+    if (has(/[Ⴀ-ჿ]/)) return "ka";                       // géorgien
+    if (has(/[؀-ۿݐ-ݿࢠ-ࣿ]/)) {        // écriture arabe
+      if (has(/[پچگژ]/)) return "fa";          // پ چ گ ژ → persan
+      if (has(/[ٹڈںھہے]/)) return "ur"; // ourdou
+      return "ar";
+    }
+    if (has(/[Ѐ-ӿ]/)) {                                  // cyrillique
+      if (has(/[іїєґ]/)) return "uk";          // і ї є ґ
+      if (has(/[ђћџљњ]/)) return "sr";    // ђ ћ џ љ њ
+      if (has(/[ѓќ]/)) return "mk";                      // ѓ ќ
+      if (has(/[ў]/)) return "be";                            // ў
+      return "ru";
+    }
+    if (has(/[一-鿿]/)) return "zh-CN";                    // han (après le kana)
+
+    // 2) Écriture latine : score par mots-outils + diacritiques
+    const padded = " " + t.toLowerCase().replace(/[^\p{L}\s]/gu, " ").replace(/\s+/g, " ") + " ";
+    let best = "en", bestScore = -1;
+    for (const lang in LATIN_STOPWORDS) {
+      let score = 0;
+      for (const w of LATIN_STOPWORDS[lang]) if (padded.includes(" " + w + " ")) score += 2;
+      if (LATIN_DIACRITICS[lang] && LATIN_DIACRITICS[lang].test(t)) score += 1.5;
+      if (score > bestScore) { bestScore = score; best = lang; }
+    }
+    return best;
+  }
+
   /* ---- registre tu/vous : actif seulement si pertinent ---- */
   function refreshRegister() {
     const t = tgtSel.value;
@@ -232,12 +300,23 @@
   /* ---- moteur de traduction avec repli ---- */
   async function translate() {
     const text = srcTa.value.trim();
-    const from = srcSel.value, to = tgtSel.value;
+    const uiFrom = srcSel.value, to = tgtSel.value;
 
     if (!text) { resultEl.textContent = ""; resultMeta.textContent = ""; hideExtras(); return; }
+
+    // Détection automatique côté client : MyMemory exige une source concrète,
+    // un langpair à source vide ne déclenche pas de vraie détection.
+    let from = uiFrom, detected = null;
+    if (uiFrom === "auto") {
+      detected = detectLanguage(text);
+      if (detected) from = detected;
+    }
+
     if (from === to && from !== "auto") {
+      resultEl.className = "result";
       resultEl.textContent = text;
-      resultMeta.textContent = "Langues identiques";
+      resultMeta.textContent = uiFrom === "auto" ? `Langues identiques (détecté : ${nameOf(from)})` : "Langues identiques";
+      if (uiFrom === "auto") srcName.textContent = `Détecté : ${nameOf(from)}`;
       hideExtras();
       return;
     }
@@ -245,7 +324,7 @@
     // 1) Hors-ligne ou réseau absent : on tente le cache local
     if (!navigator.onLine) {
       const cached = getFromCache(text, from, to);
-      if (cached) { applyResult(cached, text, from, to, true); return; }
+      if (cached) { applyResult(cached, text, uiFrom, to, true); return; }
       resultEl.className = "result";
       resultEl.innerHTML = `<span class="err">Hors ligne, et cette phrase n'est pas en cache. Reconnectez-vous pour la traduire.</span>`;
       resultMeta.textContent = ""; hideExtras();
@@ -264,7 +343,7 @@
       catch (e2) {
         // dernier recours : cache
         const cached = getFromCache(text, from, to);
-        if (cached) { applyResult(cached, text, from, to, true); return; }
+        if (cached) { applyResult(cached, text, uiFrom, to, true); return; }
         resultEl.className = "result";
         resultEl.innerHTML = `<span class="err">Impossible de traduire pour le moment. Vérifiez votre connexion puis réessayez.</span>`;
         resultMeta.textContent = ""; hideExtras();
@@ -274,9 +353,11 @@
     }
 
     const outText = postRegister(r.text, to);
-    const payload = { text: outText, detected: r.detected, alternatives: r.alternatives || [], engine: r.engine };
+    // La détection retenue : celle du moteur si fournie, sinon la nôtre.
+    const finalDetected = r.detected || detected;
+    const payload = { text: outText, detected: finalDetected, alternatives: r.alternatives || [], engine: r.engine };
     saveToCache(text, from, to, payload);
-    applyResult(payload, text, from, to, false);
+    applyResult(payload, text, uiFrom, to, false);
   }
 
   /* ---- applique un résultat (depuis réseau OU cache) ---- */
@@ -345,8 +426,11 @@
   function refreshFavBtn() {
     const favs = load(STORE.fav);
     const exists = lastTranslation && favs.some((f) => f.src === lastTranslation.src && f.tgt === lastTranslation.tgt);
-    $("fav").classList.toggle("active-fav", !!exists);
-    $("fav").textContent = exists ? "★" : "☆";
+    const btn = $("fav");
+    btn.classList.toggle("active-fav", !!exists);
+    const label = exists ? "Retirer des favoris" : "Ajouter aux favoris";
+    btn.title = label;
+    btn.setAttribute("aria-label", label);
   }
 
   /* ---- rendu des listes ---- */
@@ -362,12 +446,14 @@
       const card = document.createElement("div");
       card.className = "card";
       card.innerHTML = `
-        <button class="card-del" title="Supprimer">×</button>
+        <button class="card-del" title="Supprimer" aria-label="Supprimer">
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
         <div class="card-langs">${nameOf(it.srcLang)} → ${nameOf(it.tgtLang)}</div>
         <div class="card-src">${escapeHtml(it.src)}</div>
         <div class="card-tgt">${escapeHtml(it.tgt)}</div>`;
       card.addEventListener("click", (e) => {
-        if (e.target.classList.contains("card-del")) {
+        if (e.target.closest(".card-del")) {
           const arr = load(key).filter((x) => x.id !== it.id);
           save(key, arr); renderList(key, mountId);
           return;
