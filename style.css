@@ -93,7 +93,6 @@ body{
 .logo-mark{
   display:flex;align-items:center;color:var(--cyan);
   filter:drop-shadow(0 0 9px rgba(34,224,224,.7));
-  animation:spin 8s linear infinite;
 }
 .logo-mark .ic{width:26px;height:26px}
 @keyframes spin{to{transform:rotate(360deg)}}
