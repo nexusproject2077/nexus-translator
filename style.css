@@ -18,12 +18,44 @@
 *{box-sizing:border-box;margin:0;padding:0}
 
 /* ---------- ICÔNES SVG ---------- */
-.ic{
-  fill:none;stroke:currentColor;stroke-width:2;
-  stroke-linecap:round;stroke-linejoin:round;
-  display:block;width:18px;height:18px;
+/* ── Jēran Logo (rune drawn stroke by stroke) ──── */
+/* ── Jēran Logo (rune drawn stroke by stroke) ──── */
+.jeran-logo {
+  width: 40px;  /* Augmenté de 30px à 40px */
+  height: 40px; /* Augmenté de 30px à 40px */
+  flex-shrink: 0;
+  overflow: visible;
+  animation: jeran-glow 3.2s ease-in-out 2.3s infinite;
 }
-.ic-star{transition:fill .15s}
+
+.jeran-logo path {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 50;
+  stroke-dashoffset: 50;
+  animation: jeran-draw 0.8s cubic-bezier(.65,0,.35,1) forwards;
+}
+
+.jeran-logo path.j2 { 
+  animation-delay: 0.8s; 
+}
+
+@keyframes jeran-draw { 
+  to { stroke-dashoffset: 0; } 
+}
+
+@keyframes jeran-glow {
+  0%, 100% { filter: drop-shadow(0 0 2px rgba(99,102,241,.35)); }
+  50%      { filter: drop-shadow(0 0 8px rgba(139,92,246,.75)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jeran-logo { animation: none; }
+  .jeran-logo path { stroke-dashoffset: 0; animation: none; }
+}
 
 /* ---------- BARRES DE DÉFILEMENT (masquées) ---------- */
 *{scrollbar-width:none;-ms-overflow-style:none}
