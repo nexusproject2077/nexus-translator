@@ -4,8 +4,8 @@
   "description": "Traducteur gratuit, illimité, avec variantes, phonétique et mode hors-ligne.",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#070b12",
-  "theme_color": "#070b12",
+  "background_color": "#080809",
+  "theme_color": "#080809",
   "lang": "fr",
   "icons": [
     {

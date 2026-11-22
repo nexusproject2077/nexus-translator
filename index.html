@@ -6,14 +6,13 @@
   <title>Nexus Translator</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
   <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#070b12">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <meta name="theme-color" content="#080809">
 </head>
 <body>
-  <div class="grid-bg" aria-hidden="true"></div>
-
   <header class="topbar">
     <div class="logo">
       <span class="logo-mark">
@@ -26,21 +25,19 @@
       </span>
       <span class="logo-text">NEXUS<em>Translator</em></span>
     </div>
-    <nav class="tabs" role="tablist">
-      <button class="tab active" data-view="translate" role="tab">Traduire</button>
-      <button class="tab" data-view="history" role="tab">Historique</button>
-      <button class="tab" data-view="favorites" role="tab">Favoris</button>
+    <nav class="tabs" aria-label="Navigation">
+      <button class="tab active" data-view="translate" aria-pressed="true" aria-label="Traduire" title="Traduire"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h12M9 3v2M5 5c0 5 4 8 8 10M13 5c0 5-4 9-9 11M13 21l4-10 4 10M15 17h4"/></svg><span>Traduire</span></button>
+      <button class="tab" data-view="history" aria-pressed="false" aria-label="Historique" title="Historique"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2"/></svg><span>Historique</span></button>
+      <button class="tab" data-view="favorites" aria-pressed="false" aria-label="Favoris" title="Favoris"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z"/></svg><span>Favoris</span></button>
     </nav>
   </header>
 
   <main>
     <!-- VUE TRADUCTION -->
     <section id="view-translate" class="view active">
-      <div class="hero-line">
-        <span class="pulse"></span>
-        <span id="status-text">Prêt — traduction gratuite et illimitée · 109 langues</span>
-        <span id="net-badge" class="net-badge online">En ligne</span>
-      </div>
+      <h1>Traduire</h1>
+      <span id="status-text" class="sr-only" role="status"></span>
+      <p id="net-badge" class="offline-notice" hidden>Hors ligne — traductions en cache disponibles.</p>
 
       <div class="lang-bar">
         <div class="lang-select">
@@ -59,16 +56,16 @@
       <div class="register-bar" id="register-bar">
         <span class="register-label">Registre</span>
         <div class="register-toggle" role="group" aria-label="Registre de langue">
-          <button class="reg-btn active" data-reg="neutral">Neutre</button>
-          <button class="reg-btn" data-reg="formal">Formel (vous)</button>
-          <button class="reg-btn" data-reg="informal">Familier (tu)</button>
+          <button class="reg-btn active" data-reg="neutral" aria-pressed="true">Neutre</button>
+          <button class="reg-btn" data-reg="formal" aria-pressed="false" title="Formel (vous)">Formel</button>
+          <button class="reg-btn" data-reg="informal" aria-pressed="false" title="Familier (tu)">Familier</button>
         </div>
       </div>
 
       <div class="panels">
         <div class="panel">
           <div class="panel-head">
-            <span class="panel-lang" id="src-name">Détection auto</span>
+            <span class="panel-lang">Texte source</span>
             <div class="panel-actions">
               <button class="icon-btn" id="paste" title="Coller">Coller</button>
               <button class="icon-btn" id="clear" title="Effacer">Effacer</button>
@@ -77,18 +74,19 @@
               </button>
             </div>
           </div>
-          <textarea id="source" placeholder="Tapez ou collez votre texte…" autofocus></textarea>
+          <textarea id="source" aria-label="Texte source" placeholder="Tapez ou collez votre texte…"></textarea>
           <div class="panel-foot">
             <span id="char-count">0 caractères</span>
+            <span id="src-name"></span>
           </div>
         </div>
 
         <div class="panel out">
           <div class="panel-head">
-            <span class="panel-lang" id="tgt-name">Français</span>
+            <span class="panel-lang">Traduction</span>
             <div class="panel-actions">
               <button class="icon-btn" id="copy" title="Copier">Copier</button>
-              <button class="icon-btn icon-only" id="fav" title="Ajouter aux favoris" aria-label="Ajouter aux favoris">
+              <button class="icon-btn icon-only" id="fav" title="Ajouter aux favoris" aria-label="Ajouter aux favoris" aria-pressed="false">
                 <svg class="ic ic-star" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.1 6.5L12 18.3 6.2 20.5l1.1-6.5L2.5 9.4l6.6-.9z"/></svg>
               </button>
               <button class="icon-btn icon-only" id="speak-tgt" title="Écouter" aria-label="Écouter la traduction">
@@ -108,10 +106,6 @@
         </div>
       </div>
 
-      <p class="disclaimer">
-        Traduction via les API publiques gratuites MyMemory et LibreTranslate.
-        La qualité varie selon les langues ; pour un usage professionnel, vérifiez toujours le résultat.
-      </p>
     </section>
 
     <!-- VUE HISTORIQUE -->
@@ -132,6 +126,7 @@
       <div id="favorites-list" class="list"></div>
     </section>
   </main>
+  <footer class="footer"><span>NEXUS Translator</span><a href="https://nexus-hubs.web.app/">Nexus Hub <span aria-hidden="true">↗</span></a></footer>
 
   <script src="languages.js"></script>
   <script src="app.js"></script>

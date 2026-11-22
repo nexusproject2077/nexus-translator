@@ -14,7 +14,7 @@
    ============================================================ */
 
 const NEXUS_RAW_LANGUAGES = [
-  { code: "auto", name: "Détection automatique" },
+  { code: "auto", name: "Détection auto" },
 
   { code: "af",    name: "Afrikaans",                tts: "af-ZA" },
   { code: "sq",    name: "Albanais",                 tts: "sq-AL" },

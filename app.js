@@ -13,7 +13,7 @@
   const $ = (id) => document.getElementById(id);
   const srcSel = $("src-lang"), tgtSel = $("tgt-lang");
   const srcTa = $("source"), resultEl = $("result");
-  const srcName = $("src-name"), tgtName = $("tgt-name");
+  const srcName = $("src-name");
   const charCount = $("char-count"), resultMeta = $("result-meta");
   const statusText = $("status-text"), registerBar = $("register-bar");
   const phoneticEl = $("phonetic"), altWrap = $("alternatives"), altChips = $("alt-chips");
@@ -21,12 +21,13 @@
 
   let register = "neutral";
   let debounceTimer = null;
+  let translationVersion = 0;
   let lastTranslation = null; // { src, tgt, srcLang, tgtLang }
 
   const STORE = { hist: "nexus_tr_history", fav: "nexus_tr_favorites", cache: "nexus_tr_cache" };
 
   // Message de statut « prêt » (le nombre de langues est dérivé du référentiel).
-  const READY_MSG = `Prêt — traduction gratuite et illimitée · ${NEXUS_LANGUAGES.length - 1} langues`;
+  const READY_MSG = "Prêt";
 
   /* ---- cache hors-ligne : mémorise les traductions pour réutilisation sans réseau ---- */
   function cacheKey(text, from, to) { return `${from}::${to}::${text}`; }
@@ -129,13 +130,16 @@
     const t = tgtSel.value;
     const ok = NEXUS_REGISTER_LANGS.includes(t);
     registerBar.classList.toggle("disabled", !ok);
+    registerBar.querySelectorAll(".reg-btn").forEach((b) => { b.disabled = !ok; });
     if (!ok) setRegister("neutral");
   }
   function setRegister(r) {
     register = r;
-    document.querySelectorAll(".reg-btn").forEach((b) =>
-      b.classList.toggle("active", b.dataset.reg === r)
-    );
+    document.querySelectorAll(".reg-btn").forEach((b) => {
+      const active = b.dataset.reg === r;
+      b.classList.toggle("active", active);
+      b.setAttribute("aria-pressed", String(active));
+    });
   }
 
   /* Applique une consigne de registre via un préfixe d'indice de politesse.
@@ -299,10 +303,11 @@
 
   /* ---- moteur de traduction avec repli ---- */
   async function translate() {
+    const version = ++translationVersion;
     const text = srcTa.value.trim();
     const uiFrom = srcSel.value, to = tgtSel.value;
 
-    if (!text) { resultEl.textContent = ""; resultMeta.textContent = ""; hideExtras(); return; }
+    if (!text) { resultEl.className = "result"; resultEl.textContent = ""; resultMeta.textContent = ""; hideExtras(); lastTranslation = null; refreshFavBtn(); return; }
 
     // Détection automatique côté client : MyMemory exige une source concrète,
     // un langpair à source vide ne déclenche pas de vraie détection.
@@ -318,6 +323,8 @@
       resultMeta.textContent = uiFrom === "auto" ? `Langues identiques (détecté : ${nameOf(from)})` : "Langues identiques";
       if (uiFrom === "auto") srcName.textContent = `Détecté : ${nameOf(from)}`;
       hideExtras();
+      lastTranslation = { src: text, tgt: text, srcLang: from, tgtLang: to };
+      saveHistory(lastTranslation); refreshFavBtn();
       return;
     }
 
@@ -341,6 +348,7 @@
     } catch (e1) {
       try { r = await viaLibre(text, from, to); }
       catch (e2) {
+        if (version !== translationVersion) return;
         // dernier recours : cache
         const cached = getFromCache(text, from, to);
         if (cached) { applyResult(cached, text, uiFrom, to, true); return; }
@@ -352,6 +360,7 @@
       }
     }
 
+    if (version !== translationVersion) return;
     const outText = postRegister(r.text, to);
     // La détection retenue : celle du moteur si fournie, sinon la nôtre.
     const finalDetected = r.detected || detected;
@@ -367,7 +376,7 @@
     resultEl.textContent = outText;
 
     const detName = payload.detected ? nameOf(payload.detected) : (from === "auto" ? "auto" : nameOf(from));
-    srcName.textContent = from === "auto" ? `Détecté : ${detName}` : nameOf(from);
+    srcName.textContent = from === "auto" && payload.detected ? `Détecté : ${detName}` : "";
     resultMeta.textContent = `${payload.engine}${fromCache ? " (cache)" : ""} • ${outText.length} caractères`;
     statusText.textContent = navigator.onLine
       ? READY_MSG
@@ -431,6 +440,7 @@
     const label = exists ? "Retirer des favoris" : "Ajouter aux favoris";
     btn.title = label;
     btn.setAttribute("aria-label", label);
+    btn.setAttribute("aria-pressed", String(!!exists));
   }
 
   /* ---- rendu des listes ---- */
@@ -516,7 +526,11 @@
 
   /* ---- navigation ---- */
   function switchView(view) {
-    document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.view === view));
+    document.querySelectorAll(".tab").forEach((t) => {
+      const active = t.dataset.view === view;
+      t.classList.toggle("active", active);
+      t.setAttribute("aria-pressed", String(active));
+    });
     document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === "view-" + view));
     if (view === "history") renderList(STORE.hist, "history-list");
     if (view === "favorites") renderList(STORE.fav, "favorites-list");
@@ -524,14 +538,13 @@
 
   function updateMeta() {
     charCount.textContent = `${srcTa.value.length} caractères`;
-    tgtName.textContent = nameOf(tgtSel.value);
-    if (srcSel.value !== "auto") srcName.textContent = nameOf(srcSel.value);
-    else if (!srcTa.value) srcName.textContent = "Détection auto";
+    srcName.textContent = "";
   }
 
   /* ============ ÉVÉNEMENTS ============ */
   function bind() {
     srcTa.addEventListener("input", () => {
+      ++translationVersion;
       updateMeta();
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(translate, 550);
@@ -570,7 +583,12 @@
     });
 
     $("clear").addEventListener("click", () => {
+      ++translationVersion;
+      clearTimeout(debounceTimer);
       srcTa.value = ""; resultEl.textContent = ""; resultMeta.textContent = "";
+      resultEl.className = "result";
+      lastTranslation = null;
+      hideExtras(); refreshFavBtn();
       updateMeta(); srcTa.focus();
     });
 
@@ -663,8 +681,7 @@
   /* ---- badge réseau (mode hors-ligne) ---- */
   function updateNet() {
     const on = navigator.onLine;
-    netBadge.textContent = on ? "En ligne" : "Hors ligne";
-    netBadge.className = "net-badge " + (on ? "online" : "offline");
+    netBadge.hidden = on;
     if (!on) statusText.textContent = "Mode hors ligne — résultats en cache";
     else statusText.textContent = READY_MSG;
   }
