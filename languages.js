@@ -38,7 +38,7 @@ const NEXUS_RAW_LANGUAGES = [
   { code: "cs",    name: "Tchèque",                  tts: "cs-CZ", reg: true },
   { code: "da",    name: "Danois",                   tts: "da-DK" },
   { code: "nl",    name: "Néerlandais",              tts: "nl-NL", reg: true },
-  { code: "en",    name: "Anglais",                  tts: "en-US" },
+  { code: "en",    name: "Anglais",                  tts: "en-US", reg: true },
   { code: "eo",    name: "Espéranto",                tts: "eo" },
   { code: "et",    name: "Estonien",                 tts: "et-EE" },
   { code: "tl",    name: "Filipino (Tagalog)",       tts: "fil-PH" },

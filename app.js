@@ -30,7 +30,7 @@
   const READY_MSG = "Prêt";
 
   /* ---- cache hors-ligne : mémorise les traductions pour réutilisation sans réseau ---- */
-  function cacheKey(text, from, to) { return `${from}::${to}::${text}`; }
+  function cacheKey(text, from, to) { return `raw-v2::${from}::${to}::${text}`; }
   function loadCache() { try { return JSON.parse(localStorage.getItem(STORE.cache)) || {}; } catch { return {}; } }
   function saveToCache(text, from, to, payload) {
     const c = loadCache();
@@ -39,7 +39,11 @@
     if (keys.length > 300) delete c[keys[0]]; // borne la taille
     try { localStorage.setItem(STORE.cache, JSON.stringify(c)); } catch {}
   }
-  function getFromCache(text, from, to) { return loadCache()[cacheKey(text, from, to)] || null; }
+  function getFromCache(text, from, to, legacy = false) {
+    const cache = loadCache();
+    return cache[cacheKey(text, from, to)] || (legacy ? cache[`${from}::${to}::${text}`] : null) || null;
+  }
+  let lastRaw = null;
 
   /* ---- init des sélecteurs de langue ---- */
   function fillSelects() {
@@ -142,22 +146,14 @@
     });
   }
 
-  /* Applique une consigne de registre via un préfixe d'indice de politesse.
-     Les API publiques ne gèrent pas nativement le registre : on biaise donc
-     la formulation source côté français/langues latines en marquant le pronom. */
-  function applyRegisterHint(text, tgtLang) {
-    if (register === "neutral") return text;
-    // On n'altère pas le texte source : le registre est indiqué à l'utilisateur
-    // et appliqué en post-traitement léger sur les pronoms d'adresse connus.
-    return text;
-  }
-
   /* Règles de registre par langue.
      Chaque règle : [forme_source, forme_cible, sensibleCasse?].
      - Par défaut : insensible à la casse, la casse du mot trouvé est préservée.
      - sensibleCasse = true : nécessaire quand la forme minuscule a un autre sens
        (ex. all. « Sie » = vous vs « sie » = elle/ils ; it. « Lei » = vous vs « lei » = elle). */
   const REGISTER_RULES = {
+    en: { formal: [["hi","hello"],["hey","hello"],["thanks","thank you"],["can you","could you"],["wanna","would like to"],["bye","goodbye"]],
+          informal: [["hello","hi"],["thank you","thanks"],["could you","can you"],["goodbye","bye"]] },
     /* ----- Langues romanes ----- */
     fr: { formal:   [["tu","vous"],["toi","vous"],["ton","votre"],["ta","votre"],["tes","vos"],["te","vous"]],
           informal: [["vous","tu"],["votre","ton"],["vos","tes"]] },
@@ -212,6 +208,34 @@
           informal: [["Vi","ti",true],["Vas","tebe",true]] }
   };
 
+  // Expressions complètes avant les pronoms : conserve les accords usuels.
+  const REGISTER_PHRASES = {
+    fr: [
+      ["salut","bonjour"], ["comment vas-tu","comment allez-vous"], ["comment tu vas","comment allez-vous"],
+      ["s'il te plaît","s'il vous plaît"], ["s’il te plaît","s’il vous plaît"],
+      ["tu peux","vous pouvez"], ["tu veux","vous voulez"], ["tu es","vous êtes"],
+      ["tu as","vous avez"], ["tu fais","vous faites"], ["tu vas","vous allez"],
+      ["tu viens","vous venez"], ["tu sais","vous savez"], ["tu dois","vous devez"],
+      ["tu parles","vous parlez"], ["tu comprends","vous comprenez"], ["tu aimes","vous aimez"],
+      ["je te remercie","je vous remercie"], ["excuse-moi","excusez-moi"], ["dis-moi","dites-moi"],
+      ["donne-moi","donnez-moi"], ["à toi","à vous"]
+    ],
+    tr: [
+      ["nasılsın","nasılsınız"], ["naber","nasılsınız"],
+      ["ne yapıyorsun","ne yapıyorsunuz"], ["iyi misin","iyi misiniz"],
+      ["neredesin","neredesiniz"], ["kimsin","kimsiniz"], ["hoş geldin","hoş geldiniz"],
+      ["görüşürüz","görüşmek üzere"], ["teşekkürler","teşekkür ederim"],
+      ["eder misin","eder misiniz"], ["yapar mısın","yapar mısınız"],
+      ["ister misin","ister misiniz"], ["yapabilir misin","yapabilir misiniz"],
+      ["istiyor musun","istiyor musunuz"], ["seninle","sizinle"],
+      ["biliyor musun","biliyor musunuz"]
+    ],
+    de: [["wie geht es dir","wie geht es Ihnen"],["du bist","Sie sind"],["du hast","Sie haben"],["du kannst","Sie können"],["du möchtest","Sie möchten"],["danke","vielen Dank"]],
+    es: [["cómo estás","cómo está usted"],["puedes","puede usted"],["quieres","quiere usted"],["cómo te llamas","cómo se llama usted"]],
+    it: [["come stai","come sta"],["puoi","può"],["vuoi","vuole"],["scusami","mi scusi"]],
+    ru: [["как дела","как у вас дела"],["ты можешь","вы можете"],["ты хочешь","вы хотите"],["привет","здравствуйте"]]
+  };
+
   function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 
   /* Reproduit la casse de `sample` sur `repl` (Tu -> Vous, TU -> VOUS). */
@@ -222,30 +246,22 @@
     return repl;
   }
 
-  /* Remplace un mot entier en s'appuyant sur des frontières Unicode
-     (indispensable pour le cyrillique/grec où \b ASCII échoue). */
-  function replaceWord(text, from, to, caseSensitive) {
-    const flags = caseSensitive ? "gu" : "giu";
-    let re;
-    try {
-      re = new RegExp(`(?<![\\p{L}\\p{M}'-])(${escapeRe(from)})(?![\\p{L}\\p{M}'-])`, flags);
-    } catch {
-      // Repli si lookbehind/\p non supporté
-      re = new RegExp(`\\b(${escapeRe(from)})\\b`, flags);
-    }
-    return text.replace(re, (m) => (caseSensitive ? to : matchCase(m, to)));
-  }
-
   /* Post-traitement : ajuste tu/vous (ou équivalent) sur les langues à
      double pronom d'adresse. Approximatif et honnête — corrige les cas
      fréquents, ce n'est pas une garantie grammaticale complète. */
-  function postRegister(out, tgtLang) {
-    if (register === "neutral") return out;
-    const rules = REGISTER_RULES[tgtLang] && REGISTER_RULES[tgtLang][register];
+  function postRegister(out, tgtLang, mode = register) {
+    if (mode === "neutral") return out;
+    const rules = REGISTER_RULES[tgtLang] && REGISTER_RULES[tgtLang][mode];
     if (!rules) return out;
-    let r = out;
-    rules.forEach(([from, to, cs]) => { r = replaceWord(r, from, to, cs); });
-    return r;
+    const phrases = (REGISTER_PHRASES[tgtLang] || []).map(([a,b]) => mode === "formal" ? [a,b] : [b,a]);
+    // Un seul passage : une expression transformée ne peut pas être réécrite
+    // par une deuxième règle sur ses pronoms ou ses mots.
+    const all = [...phrases, ...rules].sort((a,b) => b[0].length - a[0].length);
+    const pattern = all.map(([from]) => escapeRe(from)).join("|");
+    return out.replace(new RegExp(`(?<![\\p{L}\\p{M}])(?:${pattern})(?![\\p{L}\\p{M}])`, "giu"), (word) => {
+      const rule = all.find(([from,,cs]) => cs ? word === from : word.toLocaleLowerCase(tgtLang) === from.toLocaleLowerCase(tgtLang));
+      return rule ? matchCase(word, rule[1]) : word;
+    });
   }
 
   /* ---- API 1 : MyMemory ---- */
@@ -302,7 +318,8 @@
   }
 
   /* ---- moteur de traduction avec repli ---- */
-  async function translate() {
+  async function translate(reuseRaw = false) {
+    clearTimeout(debounceTimer);
     const version = ++translationVersion;
     const text = srcTa.value.trim();
     const uiFrom = srcSel.value, to = tgtSel.value;
@@ -319,18 +336,24 @@
 
     if (from === to && from !== "auto") {
       resultEl.className = "result";
-      resultEl.textContent = text;
+      const adapted = postRegister(text, to);
+      resultEl.textContent = adapted;
       resultMeta.textContent = uiFrom === "auto" ? `Langues identiques (détecté : ${nameOf(from)})` : "Langues identiques";
       if (uiFrom === "auto") srcName.textContent = `Détecté : ${nameOf(from)}`;
       hideExtras();
-      lastTranslation = { src: text, tgt: text, srcLang: from, tgtLang: to };
+      lastTranslation = { src: text, tgt: adapted, srcLang: from, tgtLang: to };
       saveHistory(lastTranslation); refreshFavBtn();
       return;
     }
 
+    if (reuseRaw) {
+      const raw = lastRaw?.key === cacheKey(text, from, to) ? lastRaw.payload : getFromCache(text, from, to);
+      if (raw) { applyResult(raw, text, uiFrom, to, !navigator.onLine); return; }
+    }
+
     // 1) Hors-ligne ou réseau absent : on tente le cache local
     if (!navigator.onLine) {
-      const cached = getFromCache(text, from, to);
+      const cached = getFromCache(text, from, to, true);
       if (cached) { applyResult(cached, text, uiFrom, to, true); return; }
       resultEl.className = "result";
       resultEl.innerHTML = `<span class="err">Hors ligne, et cette phrase n'est pas en cache. Reconnectez-vous pour la traduire.</span>`;
@@ -350,7 +373,7 @@
       catch (e2) {
         if (version !== translationVersion) return;
         // dernier recours : cache
-        const cached = getFromCache(text, from, to);
+        const cached = getFromCache(text, from, to, true);
         if (cached) { applyResult(cached, text, uiFrom, to, true); return; }
         resultEl.className = "result";
         resultEl.innerHTML = `<span class="err">Impossible de traduire pour le moment. Vérifiez votre connexion puis réessayez.</span>`;
@@ -361,28 +384,29 @@
     }
 
     if (version !== translationVersion) return;
-    const outText = postRegister(r.text, to);
     // La détection retenue : celle du moteur si fournie, sinon la nôtre.
     const finalDetected = r.detected || detected;
-    const payload = { text: outText, detected: finalDetected, alternatives: r.alternatives || [], engine: r.engine };
+    const payload = { text: r.text, detected: finalDetected, alternatives: r.alternatives || [], engine: r.engine };
+    lastRaw = { key: cacheKey(text, from, to), payload };
     saveToCache(text, from, to, payload);
     applyResult(payload, text, uiFrom, to, false);
   }
 
   /* ---- applique un résultat (depuis réseau OU cache) ---- */
   function applyResult(payload, text, from, to, fromCache) {
-    const outText = payload.text;
+    const outText = postRegister(payload.text, to);
     resultEl.className = "result";
     resultEl.textContent = outText;
 
     const detName = payload.detected ? nameOf(payload.detected) : (from === "auto" ? "auto" : nameOf(from));
     srcName.textContent = from === "auto" && payload.detected ? `Détecté : ${detName}` : "";
-    resultMeta.textContent = `${payload.engine}${fromCache ? " (cache)" : ""} • ${outText.length} caractères`;
+    const tone = register === "neutral" ? "" : register === "formal" ? " • Formel" : " • Familier";
+    resultMeta.textContent = `${payload.engine}${fromCache ? " (cache)" : ""}${tone} • ${outText.length} caractères`;
     statusText.textContent = navigator.onLine
       ? READY_MSG
       : "Mode hors ligne — résultats en cache";
 
-    showAlternatives(payload.alternatives, to);
+    showAlternatives([...new Set((payload.alternatives || []).map(a => postRegister(a, to)))].filter(a => a !== outText), to);
     showPhonetic(outText, to);
 
     lastTranslation = { src: text, tgt: outText, srcLang: payload.detected || from, tgtLang: to };
@@ -574,7 +598,10 @@
     });
 
     document.querySelectorAll(".reg-btn").forEach((b) =>
-      b.addEventListener("click", () => { setRegister(b.dataset.reg); translate(); })
+      b.addEventListener("click", () => {
+        if (b.disabled || b.dataset.reg === register) return;
+        setRegister(b.dataset.reg); translate(true);
+      })
     );
 
     $("paste").addEventListener("click", async () => {
