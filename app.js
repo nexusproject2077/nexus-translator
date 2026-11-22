@@ -264,6 +264,70 @@
     });
   }
 
+  // MyMemory renvoie parfois plusieurs traductions dans un seul champ,
+  // séparées par des slashs. Ne pas couper les URL, fractions ou slashs
+  // qui font partie du texte demandé.
+  function splitVariants(value, source, lang) {
+    const text = String(value || "").trim();
+    if (!text) return [];
+    if (source.includes("/") || /https?:\/\/|www\.|\d\s*\/\s*\d/.test(text)) return [text];
+    const parts = text.split(/\s*\/\s*/u).map(p => p.trim()).filter(Boolean);
+    if (parts.length < 2) return [text];
+    const explicit = /\s\/\s|[?!。！？]\s*\//u.test(text);
+    const fullPhrases = parts.every(p => /\p{L}[^\n]*\s+[^\n]*\p{L}/u.test(p));
+    return explicit || fullPhrases || parts.every(p => greetingForm(p, lang)) ? parts : [text];
+  }
+
+  // Formulations équivalentes d'une salutation : le registre neutre
+  // privilégie une forme non marquée, sans bricoler les pronoms.
+  const GREETINGS = {
+    fr: {
+      neutral: "Comment ça va ?", formal: "Comment allez-vous ?", informal: "Comment vas-tu ?",
+      aliases: ["comment ça va", "comment ca va", "ça va", "ca va", "comment vas tu", "comment allez vous", "comment tu vas", "comment vous allez"]
+    },
+    tr: { neutral: "Nasılsın?", formal: "Nasılsınız?", informal: "Nasılsın?", aliases: ["nasılsın", "nasılsınız", "naber", "ne haber"] },
+    de: { neutral: "Wie geht es dir?", formal: "Wie geht es Ihnen?", informal: "Wie geht es dir?", aliases: ["wie geht es dir", "wie geht es ihnen", "wie geht's"] },
+    es: { neutral: "¿Cómo estás?", formal: "¿Cómo está usted?", informal: "¿Cómo estás?", aliases: ["cómo estás", "cómo está usted", "qué tal"] },
+    en: { neutral: "How are you?", formal: "How are you?", informal: "How's it going?", aliases: ["how are you", "how do you do", "how's it going", "how are you doing"] }
+  };
+  function phraseKey(text, lang) {
+    return text.normalize("NFC").toLocaleLowerCase(lang).replace(/[?!¿¡.,;:。！？]/gu, "").replace(/[-‐‑–]/gu, " ").replace(/\s+/gu, " ").trim();
+  }
+  function greetingForm(text, lang) {
+    const group = GREETINGS[lang];
+    if (!group) return null;
+    const key = phraseKey(text, lang);
+    return group.aliases.some(a => phraseKey(a, lang) === key) ? group : null;
+  }
+  function formatTranslation(text, lang, mode) {
+    const greeting = greetingForm(text, lang);
+    return greeting ? greeting[mode] : postRegister(text, lang, mode);
+  }
+  function selectTranslation(payload, source, lang, mode) {
+    const main = splitVariants(payload.text, source, lang);
+    const extras = (payload.alternatives || []).flatMap(a => splitVariants(a, source, lang));
+    const candidates = [...main, ...extras];
+    const first = main[0] || "";
+    // Si la réponse principale est une salutation connue, choisir sa
+    // formulation canonique plutôt qu'une variante brute de l'API.
+    const preferred = greetingForm(first, lang) ? first : main.find(candidate => {
+      const formal = postRegister(candidate, lang, "formal");
+      const informal = postRegister(candidate, lang, "informal");
+      if (mode === "formal") return formal === candidate && informal !== candidate;
+      if (mode === "informal") return informal === candidate && formal !== candidate;
+      return formal === candidate && informal === candidate;
+    }) || first;
+    const output = formatTranslation(preferred, lang, mode);
+    const seen = new Set([phraseKey(output, lang)]);
+    const alternatives = [];
+    for (const candidate of candidates) {
+      const adapted = formatTranslation(candidate, lang, mode);
+      const key = phraseKey(adapted, lang);
+      if (key && !seen.has(key)) { seen.add(key); alternatives.push(adapted); }
+    }
+    return { output, alternatives: alternatives.slice(0, 5) };
+  }
+
   /* ---- API 1 : MyMemory ---- */
   async function viaMyMemory(text, from, to) {
     const langpair = `${from === "auto" ? "" : from}|${to}`;
@@ -394,7 +458,7 @@
 
   /* ---- applique un résultat (depuis réseau OU cache) ---- */
   function applyResult(payload, text, from, to, fromCache) {
-    const outText = postRegister(payload.text, to);
+    const { output: outText, alternatives } = selectTranslation(payload, text, to, register);
     resultEl.className = "result";
     resultEl.textContent = outText;
 
@@ -406,7 +470,7 @@
       ? READY_MSG
       : "Mode hors ligne — résultats en cache";
 
-    showAlternatives([...new Set((payload.alternatives || []).map(a => postRegister(a, to)))].filter(a => a !== outText), to);
+    showAlternatives(alternatives, to);
     showPhonetic(outText, to);
 
     lastTranslation = { src: text, tgt: outText, srcLang: payload.detected || from, tgtLang: to };
@@ -427,7 +491,10 @@
         resultEl.textContent = a;
         resultMeta.textContent = `Variante choisie • ${a.length} caractères`;
         showPhonetic(a, to);
-        if (lastTranslation) lastTranslation.tgt = a;
+        if (lastTranslation) {
+          lastTranslation.tgt = a;
+          refreshFavBtn();
+        }
       });
       altChips.appendChild(chip);
     });
@@ -599,7 +666,7 @@
 
     document.querySelectorAll(".reg-btn").forEach((b) =>
       b.addEventListener("click", () => {
-        if (b.disabled || b.dataset.reg === register) return;
+        if (b.disabled) return;
         setRegister(b.dataset.reg); translate(true);
       })
     );
